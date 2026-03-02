@@ -290,9 +290,17 @@ func (h Handler) handleRequest(rw http.ResponseWriter, r *http.Request) error {
 
 // timeWarpNPMPackageRequest modifies the provided JSON-like map to exclude all content after "at".
 func timeWarpNPMPackageRequest(obj map[string]any, at time.Time) error {
-	var futureVersions []string
-	var latestVersion string
-	var latestVersionTime time.Time
+    var futureVersions []string
+    var latestVersion string
+    var latestVersionTime time.Time
+
+    // Capture upstream dist-tags.latest
+    var originalLatest string
+    if distTags, ok := obj["dist-tags"].(map[string]any); ok {
+        if v, ok := distTags["latest"].(string); ok {
+            originalLatest = v
+        }
+    }
 	{
 		// Find and exclude versions published after "at"
 		times, ok := obj["time"].(map[string]any)
@@ -318,8 +326,8 @@ func timeWarpNPMPackageRequest(obj map[string]any, at time.Time) error {
 				if t.After(at) {
 					futureVersions = append(futureVersions, tag)
 				} else if t.After(latestVersionTime) {
-					latestVersion = tag
-					latestVersionTime = t
+    				latestVersion = tag
+    				latestVersionTime = t
 				}
 			}
 		}
@@ -352,7 +360,12 @@ func timeWarpNPMPackageRequest(obj map[string]any, at time.Time) error {
 				delete(versions, v)
 			}
 		}
-		obj["versions"] = versions
+		// Prefer upstream dist-tags.latest if it still exists
+		if originalLatest != "" {
+    		if _, removed := slices.BinarySearch(futureVersions, originalLatest); !removed {
+        		latestVersion = originalLatest
+    		}
+		}
 	}
 	obj["repository"] = latestVersionRepo
 	obj["description"] = latestVersionDescription
